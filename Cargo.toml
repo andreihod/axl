@@ -1,0 +1,15 @@
+[package]
+name = "axl"
+version = "0.1.0"
+authors = ["Andrei <eu@andreih.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = "0.11"
+scraper = "0.12.0"
+chrono = "0.4.19"
+csv = "1.1.6"
+serde = { version = "1.0.126", features = ["derive"] }
