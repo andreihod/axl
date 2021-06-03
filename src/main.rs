@@ -1,6 +1,7 @@
-mod importer;
+use axl::importer;
 
 #[tokio::main]
 async fn main() {
-    importer::update_fund_prices().await.unwrap();
+    let conn = axl::establish_connection();
+    importer::update_fund_prices(&conn).await.unwrap();
 }

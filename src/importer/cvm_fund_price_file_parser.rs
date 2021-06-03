@@ -1,4 +1,4 @@
-use super::cvm_fund_importer::{FundPrice, ImporterError};
+use super::cvm_fund_importer::{ImporterError, ParsedFundPrice};
 
 impl From<csv::Error> for ImporterError {
     fn from(_error: csv::Error) -> Self {
@@ -6,7 +6,10 @@ impl From<csv::Error> for ImporterError {
     }
 }
 
-pub async fn parse_price_files(url: &str, name: &str) -> Result<Vec<FundPrice>, ImporterError> {
+pub async fn parse_price_files(
+    url: &str,
+    name: &str,
+) -> Result<Vec<ParsedFundPrice>, ImporterError> {
     let body = reqwest::get(format!("{}{}", url, name))
         .await?
         .text()

@@ -1,0 +1,1 @@
+DROP TABLE cvm_fund_importer_logs;
