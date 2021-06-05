@@ -9,6 +9,6 @@ pub struct Funds {
 
 #[derive(Insertable)]
 #[table_name = "funds"]
-pub struct NewFund<'a> {
-    pub cnpj: &'a str,
+pub struct NewFund {
+    pub cnpj: String,
 }

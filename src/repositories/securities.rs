@@ -1,40 +1,46 @@
-use diesel::result::Error;
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, QueryDsl};
+use tokio_diesel::{AsyncError, AsyncRunQueryDsl};
 
 use crate::{
     models::{Funds, NewFund, NewFundPrice},
     schema::*,
-    DbConn,
+    DbPool,
 };
 
-pub fn find_or_insert_fund(conn: &DbConn, cnpj: &String) -> Result<Funds, Error> {
-    match find_fund_by_cnpj(conn, cnpj) {
+pub async fn find_or_insert_fund(pool: &DbPool, cnpj: String) -> Result<Funds, AsyncError> {
+    match find_fund_by_cnpj(pool, cnpj.clone()).await {
         Ok(fund) => Ok(fund),
         Err(_) => {
-            insert_fund(conn, cnpj)?;
-            Ok(find_fund_by_cnpj(conn, cnpj)?)
+            insert_fund(pool, cnpj.clone()).await?;
+            Ok(find_fund_by_cnpj(pool, cnpj).await?)
         }
     }
 }
 
-pub fn find_fund_by_cnpj(conn: &DbConn, cnpj: &String) -> Result<Funds, Error> {
+pub async fn find_fund_by_cnpj(pool: &DbPool, cnpj: String) -> Result<Funds, AsyncError> {
     funds::dsl::funds
         .filter(funds::dsl::cnpj.eq(cnpj))
-        .first::<Funds>(conn)
+        .first_async::<Funds>(pool)
+        .await
 }
 
-pub fn insert_fund(conn: &DbConn, cnpj: &String) -> Result<usize, Error> {
-    let new_fund = NewFund { cnpj };
+pub async fn insert_fund(pool: &DbPool, cnpj: String) -> Result<usize, AsyncError> {
     diesel::insert_into(funds::dsl::funds)
-        .values(new_fund)
-        .execute(conn)
+        .values(NewFund { cnpj })
+        .execute_async(pool)
+        .await
 }
 
-pub fn insert_fund_price(conn: &DbConn, fund_price: &NewFundPrice) -> Result<usize, Error> {
+pub async fn insert_fund_price(
+    pool: &DbPool,
+    fund_price: NewFundPrice,
+) -> Result<usize, AsyncError> {
+    let price = fund_price.price.clone();
     diesel::insert_into(fund_prices::dsl::fund_prices)
         .values(fund_price)
         .on_conflict((fund_prices::dsl::date, fund_prices::dsl::fund_id))
         .do_update()
-        .set(fund_prices::dsl::price.eq(fund_price.price))
-        .execute(conn)
+        .set(fund_prices::dsl::price.eq(price))
+        .execute_async(pool)
+        .await
 }

@@ -3,14 +3,14 @@ use diesel::Insertable;
 
 #[derive(Insertable)]
 #[table_name = "fund_prices"]
-pub struct NewFundPrice<'a> {
-    pub fund_id: &'a i32,
-    pub date: &'a chrono::NaiveDate,
-    pub price: &'a f64,
+pub struct NewFundPrice {
+    pub fund_id: i32,
+    pub date: chrono::NaiveDate,
+    pub price: f64,
 }
 
-impl<'a> NewFundPrice<'a> {
-    pub fn new(fund_id: &'a i32, date: &'a chrono::NaiveDate, price: &'a f64) -> Self {
+impl NewFundPrice {
+    pub fn new(fund_id: i32, date: chrono::NaiveDate, price: f64) -> Self {
         Self {
             fund_id,
             date,

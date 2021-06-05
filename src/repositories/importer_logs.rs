@@ -1,24 +1,25 @@
-use diesel::{result::Error, RunQueryDsl};
-
-use crate::{models::CvmFundImporterLogs, schema::cvm_fund_importer_logs::dsl::*};
-use crate::{models::NewCvmFundImporterLog, DbConn};
+use crate::models::NewCvmFundImporterLog;
+use crate::{models::CvmFundImporterLogs, schema::cvm_fund_importer_logs::dsl::*, DbPool};
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
+use tokio_diesel::*;
 
-pub fn insert_cvm_fund_importer_log(
-    conn: &DbConn,
-    fund_importer_log: &NewCvmFundImporterLog,
-) -> Result<usize, Error> {
+pub async fn insert_cvm_fund_importer_log(
+    conn: &DbPool,
+    fund_importer_log: NewCvmFundImporterLog,
+) -> Result<usize, AsyncError> {
     diesel::insert_into(cvm_fund_importer_logs)
         .values(fund_importer_log)
-        .execute(conn)
+        .execute_async(conn)
+        .await
 }
 
-pub fn find_cvm_fund_importer_log_by_name_and_time(
-    conn: &DbConn,
-    name: &String,
-    time: &chrono::NaiveDateTime,
-) -> Result<CvmFundImporterLogs, Error> {
+pub async fn find_cvm_fund_importer_log_by_name_and_time(
+    conn: &DbPool,
+    name: String,
+    time: chrono::NaiveDateTime,
+) -> Result<CvmFundImporterLogs, AsyncError> {
     cvm_fund_importer_logs
-        .filter(file_name.eq(&name).and(file_last_modified.eq(&time)))
-        .first::<CvmFundImporterLogs>(conn)
+        .filter(file_name.eq(name).and(file_last_modified.eq(time)))
+        .first_async::<CvmFundImporterLogs>(conn)
+        .await
 }

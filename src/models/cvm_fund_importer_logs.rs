@@ -11,8 +11,8 @@ pub struct CvmFundImporterLogs {
 
 #[derive(Insertable)]
 #[table_name = "cvm_fund_importer_logs"]
-pub struct NewCvmFundImporterLog<'a> {
-    pub file_name: &'a str,
-    pub file_last_modified: &'a chrono::NaiveDateTime,
-    pub imported_at: &'a chrono::NaiveDateTime,
+pub struct NewCvmFundImporterLog {
+    pub file_name: String,
+    pub file_last_modified: chrono::NaiveDateTime,
+    pub imported_at: chrono::NaiveDateTime,
 }
