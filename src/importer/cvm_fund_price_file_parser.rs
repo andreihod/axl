@@ -15,6 +15,8 @@ pub async fn parse_price_files(
         .text()
         .await?;
 
+    println!("downloaded file {}", name);
+
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(b';')
         .from_reader(body.as_bytes());

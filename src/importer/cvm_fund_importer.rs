@@ -7,13 +7,14 @@ use crate::{
     DbPool,
 };
 use chrono::NaiveDateTime;
-use futures::StreamExt;
+use futures::{future::join_all, StreamExt};
 use serde::Deserialize;
 
 static CVM_URL: &str = "http://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/";
 
 #[derive(Debug)]
 pub enum ImporterError {
+    AsyncTokioError,
     HttpError,
     ParseError,
     FundPriceParseError,
@@ -38,14 +39,46 @@ pub struct ImportFile {
     pub time: NaiveDateTime,
 }
 
-pub async fn import_cvm_fund_prices(pool: &DbPool) -> Result<(), ImporterError> {
-    let import_file_list = parse_import_files(CVM_URL).await?;
-    for import_file in filter_pending_imported_files(pool, import_file_list).await {
-        println!("importing file {}", import_file.name);
-        let parsed_prices = parse_price_files(CVM_URL, &import_file.name).await?;
-        persist_fund_prices(pool, parsed_prices).await?;
-        persist_imported_file_log(pool, import_file).await?;
+pub async fn import_cvm_fund_prices(pool: DbPool) -> Result<(), Vec<ImporterError>> {
+    let errors = match parse_import_files(CVM_URL).await {
+        Ok(import_file_list) => {
+            let tasks = filter_pending_imported_files(&pool, import_file_list)
+                .await
+                .into_iter()
+                .map(|import_file| {
+                    let task_pool = pool.clone();
+                    tokio::spawn(async move { handle_file_import(task_pool, import_file).await })
+                })
+                .collect::<Vec<_>>();
+
+            join_all(tasks)
+                .await
+                .into_iter()
+                .filter_map(|task_result| match task_result {
+                    Ok(import_result) => import_result.err(),
+                    Err(_) => Some(ImporterError::AsyncTokioError),
+                })
+                .collect()
+        }
+        Err(importer_error) => vec![importer_error],
+    };
+
+    if errors.len() >= 1 {
+        Err(errors)
+    } else {
+        Ok(())
     }
+}
+
+async fn handle_file_import(pool: DbPool, import_file: ImportFile) -> Result<(), ImporterError> {
+    let file_name = import_file.name.clone();
+    println!("started importing file {}", file_name);
+
+    let parsed_prices = parse_price_files(CVM_URL, &import_file.name).await?;
+    persist_fund_prices(&pool, parsed_prices).await?;
+    persist_imported_file_log(&pool, import_file).await?;
+
+    println!("finished importing file {}", file_name);
 
     Ok(())
 }
