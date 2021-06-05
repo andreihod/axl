@@ -1,4 +1,4 @@
-use super::schema::{cvm_fund_importer_logs, fund_prices, funds};
+use crate::schema::cvm_fund_importer_logs;
 use diesel::{Insertable, Queryable};
 
 #[derive(Queryable)]
@@ -15,24 +15,4 @@ pub struct NewCvmFundImporterLog<'a> {
     pub file_name: &'a str,
     pub file_last_modified: &'a chrono::NaiveDateTime,
     pub imported_at: &'a chrono::NaiveDateTime,
-}
-
-#[derive(Queryable)]
-pub struct Funds {
-    pub id: i32,
-    pub cnpj: String,
-}
-
-#[derive(Insertable)]
-#[table_name = "funds"]
-pub struct NewFund<'a> {
-    pub cnpj: &'a str,
-}
-
-#[derive(Insertable)]
-#[table_name = "fund_prices"]
-pub struct NewFundPrice<'a> {
-    pub fund_id: &'a i32,
-    pub date: &'a chrono::NaiveDate,
-    pub price: &'a f64,
 }

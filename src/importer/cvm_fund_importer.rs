@@ -1,13 +1,12 @@
 use super::cvm_fund_import_file_parser::parse_import_files;
 use super::cvm_fund_price_file_parser::parse_price_files;
 use crate::{
-    models::{CvmFundImporterLogs, Funds, NewCvmFundImporterLog, NewFund, NewFundPrice},
-    schema::cvm_fund_importer_logs::dsl::*,
-    schema::fund_prices::dsl::*,
-    schema::funds::dsl::*,
+    models::{Funds, NewCvmFundImporterLog, NewFundPrice},
+    repositories::importer_logs::*,
+    repositories::securities::*,
+    DbConn,
 };
 use chrono::NaiveDateTime;
-use diesel::{BoolExpressionMethods, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 use serde::Deserialize;
 
 static CVM_URL: &str = "http://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/";
@@ -38,111 +37,61 @@ pub struct ImportFile {
     pub time: NaiveDateTime,
 }
 
-pub async fn update_fund_prices(conn: &PgConnection) -> Result<(), ImporterError> {
-    let import_files = parse_import_files(CVM_URL).await?;
-
-    for import_file in filter_pending_imported_files(import_files, &conn) {
-        let parsed_fund_prices = parse_price_files(CVM_URL, &import_file.name).await?;
+pub async fn import_cvm_fund_prices(conn: &DbConn) -> Result<(), ImporterError> {
+    for import_file in filter_pending_imported_files(parse_import_files(CVM_URL).await?, &conn) {
         println!("importing file {}", import_file.name);
-        save_fund_prices(parsed_fund_prices, conn)?;
-        save_imported_file_log(import_file, conn)?;
+        persist_fund_prices(conn, parse_price_files(CVM_URL, &import_file.name).await?)?;
+        persist_imported_file_log(conn, import_file)?;
     }
 
     Ok(())
 }
 
-fn save_fund_prices(
+fn persist_fund_prices(
+    conn: &DbConn,
     parsed_fund_prices: Vec<ParsedFundPrice>,
-    conn: &PgConnection,
 ) -> Result<(), ImporterError> {
     for fund_price in parsed_fund_prices {
-        let fund = find_or_insert_fund(&fund_price.cnpj, conn)?;
-        insert_fund_price(fund, fund_price, conn)?;
+        match find_or_insert_fund(conn, &fund_price.cnpj) {
+            Ok(fund) => persist_fund_price(conn, fund, fund_price)?,
+            Err(_) => return Err(ImporterError::SaveFundError(fund_price.cnpj)),
+        };
     }
 
     Ok(())
 }
 
-fn find_or_insert_fund(fund_cnpj: &String, conn: &PgConnection) -> Result<Funds, ImporterError> {
-    match find_fund_by_cnpj(fund_cnpj, conn) {
-        Ok(fund) => Ok(fund),
-        Err(_) => {
-            save_fund(fund_cnpj, conn)?;
-            Ok(find_fund_by_cnpj(fund_cnpj, conn).unwrap())
-        }
-    }
-}
-
-fn insert_fund_price(
+fn persist_fund_price(
+    conn: &DbConn,
     fund: Funds,
     fund_price: ParsedFundPrice,
-    conn: &PgConnection,
-) -> Result<(), ImporterError> {
-    match diesel::insert_into(fund_prices)
-        .values(NewFundPrice {
-            fund_id: &fund.id,
-            date: &fund_price.date,
-            price: &fund_price.price,
-        })
-        .on_conflict((date, fund_id))
-        .do_update()
-        .set(price.eq(fund_price.price))
-        .execute(conn)
-    {
-        Ok(_) => Ok(()),
-        Err(_) => Err(ImporterError::SaveFundPriceError(fund_price)),
-    }
+) -> Result<usize, ImporterError> {
+    let new_fund_price = &NewFundPrice::new(&fund.id, &fund_price.date, &fund_price.price);
+    insert_fund_price(conn, new_fund_price)
+        .map_err(|_| ImporterError::SaveFundPriceError(fund_price))
 }
 
-fn find_fund_by_cnpj(
-    fund_cnpj: &String,
-    conn: &PgConnection,
-) -> Result<Funds, diesel::result::Error> {
-    funds.filter(cnpj.eq(fund_cnpj)).first::<Funds>(conn)
-}
-
-fn filter_pending_imported_files(
-    import_files: Vec<ImportFile>,
-    conn: &PgConnection,
-) -> Vec<ImportFile> {
+fn filter_pending_imported_files(import_files: Vec<ImportFile>, conn: &DbConn) -> Vec<ImportFile> {
     import_files
         .into_iter()
         .filter(|import_file| {
-            let predicate = file_name
-                .eq(&import_file.name)
-                .and(file_last_modified.eq(&import_file.time));
-
-            cvm_fund_importer_logs
-                .filter(predicate)
-                .first::<CvmFundImporterLogs>(conn)
+            find_cvm_fund_importer_log_by_name_and_time(conn, &import_file.name, &import_file.time)
                 .is_err()
         })
         .collect()
 }
 
-fn save_fund(fund_cnpj: &String, conn: &PgConnection) -> Result<(), ImporterError> {
-    match diesel::insert_into(funds)
-        .values(NewFund { cnpj: fund_cnpj })
-        .execute(conn)
-    {
-        Ok(_) => Ok(()),
-        Err(_) => Err(ImporterError::SaveFundError(String::from(fund_cnpj))),
-    }
-}
-
-fn save_imported_file_log(
+fn persist_imported_file_log(
+    conn: &DbConn,
     import_file: ImportFile,
-    conn: &PgConnection,
-) -> Result<(), ImporterError> {
-    match diesel::insert_into(cvm_fund_importer_logs)
-        .values(NewCvmFundImporterLog {
+) -> Result<usize, ImporterError> {
+    insert_cvm_fund_importer_log(
+        conn,
+        &NewCvmFundImporterLog {
             file_name: &import_file.name,
             file_last_modified: &import_file.time,
             imported_at: &chrono::offset::Utc::now().naive_utc(),
-        })
-        .execute(conn)
-    {
-        Ok(_) => Ok(()),
-        Err(_) => Err(ImporterError::SaveLogError(import_file.name)),
-    }
+        },
+    )
+    .map_err(|_| ImporterError::SaveLogError(import_file.name))
 }
