@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
+extern crate rocket;
 
 pub mod importer;
 pub mod models;
@@ -12,28 +13,56 @@ use diesel::{
     r2d2::{ConnectionManager, Pool},
 };
 use dotenv::dotenv;
+use rocket::{
+    fairing::{AdHoc, Fairing},
+    http::Status,
+    outcome::Outcome,
+};
 use std::{env, sync::Arc};
 
-type DbConn = diesel::PgConnection;
-type DbPool = Arc<Pool<ConnectionManager<DbConn>>>;
+pub type DbConn = diesel::PgConnection;
+pub type DbPool = Arc<Pool<ConnectionManager<DbConn>>>;
 
-pub fn establish_connection() -> DbConn {
-    let database_url = fetch_database_url();
-    DbConn::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
-}
-
-pub fn initialize_pool() -> DbPool {
-    let manager = ConnectionManager::<PgConnection>::new(fetch_database_url());
+pub fn initialize_service_pool() -> DbPool {
+    dotenv().ok();
+    let manager = ConnectionManager::<PgConnection>::new(
+        env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+    );
 
     Arc::new(
         Pool::builder()
-            .max_size(25)
+            .max_size(20)
             .build(manager)
-            .expect("Error building the database pool"),
+            .expect("Error building the service database pool"),
     )
 }
 
-fn fetch_database_url() -> String {
-    dotenv().ok();
-    env::var("DATABASE_URL").expect("DATABASE_URL must be set")
+#[derive(Clone)]
+pub struct FairingDbPool(DbPool);
+
+impl FairingDbPool {
+    pub fn new(pool: DbPool) -> Self {
+        FairingDbPool(pool)
+    }
+
+    pub fn get_pool(self) -> DbPool {
+        self.0
+    }
+}
+
+pub async fn db_pool_fairing(pool: FairingDbPool) -> impl Fairing {
+    AdHoc::on_ignite("DbPool", |rocket| async { rocket.manage(pool) })
+}
+
+#[rocket::async_trait]
+impl<'r> rocket::request::FromRequest<'r> for FairingDbPool {
+    type Error = ();
+
+    #[inline]
+    async fn from_request(request: &'r rocket::Request<'_>) -> rocket::request::Outcome<Self, ()> {
+        match request.rocket().state::<FairingDbPool>() {
+            Some(state) => Outcome::Success(state.to_owned()),
+            None => Outcome::Failure((Status::InternalServerError, ())),
+        }
+    }
 }
