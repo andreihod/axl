@@ -1,13 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
-use axl::{importer, FairingDbPool};
-
-#[get("/world")]
-async fn world(pool: FairingDbPool) -> String {
-    let pool_a = pool.get_pool();
-    "Hello, world!".to_string()
-}
+use axl::{importer, routes, FairingDbPool};
 
 fn main() {
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -26,7 +20,7 @@ fn spawn_cvm_importer(pool: axl::DbPool) {
 async fn launch_rocket(pool: axl::DbPool) {
     rocket::build()
         .attach(axl::db_pool_fairing(FairingDbPool::new(pool)).await)
-        .mount("/hello", routes![world])
+        .mount("/api", routes![routes::prices])
         .launch()
         .await
         .unwrap();

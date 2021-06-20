@@ -73,6 +73,7 @@ dependencies = [
  "rocket",
  "scraper",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-diesel",
 ]

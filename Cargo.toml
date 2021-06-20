@@ -15,6 +15,7 @@ scraper = "0.12.0"
 csv = "1.1.6"
 chrono = { version = "0.4.19", features= ["serde"] }
 serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0"
 diesel = { version = "1.4.4", features = ["postgres", "chrono", "r2d2"] }
 tokio-diesel = { git = "https://github.com/mehcode/tokio-diesel/" }
 dotenv = "0.15.0"

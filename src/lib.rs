@@ -6,6 +6,7 @@ extern crate rocket;
 pub mod importer;
 pub mod models;
 pub mod repositories;
+pub mod routes;
 pub mod schema;
 
 use diesel::{
